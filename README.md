@@ -1,6 +1,6 @@
 # Simpul HR Backend
 
-Backend modular monolith untuk frontend Vue di `../hr-management`. API menggunakan `/v1`, UUID, JSON camelCase, waktu UTC RFC3339, tanggal `YYYY-MM-DD`, rupiah integer, dan error `application/problem+json`.
+Backend modular monolith. API menggunakan `/v1`, UUID, JSON camelCase, waktu UTC RFC3339, tanggal `YYYY-MM-DD`, rupiah integer, dan error `application/problem+json`.
 
 ## Komponen
 
