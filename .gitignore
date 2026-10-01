@@ -1,0 +1,16 @@
+.env
+bin/
+coverage.out
+docs/generated/
+
+# Compiled binaries. `bin/` covers the conventional output directory, but a plain
+# `go build -o simpul-api ./cmd/api` drops the binary next to the source, where it
+# would be committed. A public repository should not carry a ~12 MB executable.
+/simpul-api
+/simpul-api.exe
+/simpul-migrate
+/simpul-migrate.exe
+/simpul-seed
+/simpul-seed.exe
+/simpul-worker
+/simpul-worker.exe

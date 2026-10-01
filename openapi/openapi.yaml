@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Simpul HR API
+  version: 1.0.0
+  description: Multi-tenant REST API for the Simpul HR management platform.
+servers:
+  - url: http://localhost:8080/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: Auth }
+  - { name: Core HR }
+  - { name: Operations }
+  - { name: Talent }
+  - { name: Collaboration }
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Session or organization selection, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        '202': { description: MFA challenge, content: { application/json: { schema: { $ref: '#/components/schemas/MFAChallenge' } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: refreshSession
+      responses:
+        '200': { description: Rotated session, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: logout
+      responses: { '204': { description: Logged out } }
+  /auth/mfa/enroll:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: enrollMfa
+      requestBody: { $ref: '#/components/requestBodies/MFAChallengeToken' }
+      responses:
+        '200': { description: TOTP enrollment, content: { application/json: { schema: { type: object, required: [secret, otpauthUri], properties: { secret: { type: string }, otpauthUri: { type: string, format: uri } } } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/mfa/confirm:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: confirmMfa
+      requestBody: { $ref: '#/components/requestBodies/MFACode' }
+      responses:
+        '200': { description: Session and recovery codes, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: verifyMfa
+      requestBody: { $ref: '#/components/requestBodies/MFACode' }
+      responses:
+        '200': { description: Session, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/sso/{provider}/start:
+    get:
+      tags: [Auth]
+      security: []
+      operationId: startSso
+      parameters: [ { $ref: '#/components/parameters/Provider' }, { name: organizationSlug, in: query, required: false, schema: { type: string } } ]
+      responses:
+        '200': { description: Provider authorization URL, content: { application/json: { schema: { type: object, properties: { authorizationUrl: { type: string } } } } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/sso/{provider}/callback:
+    get:
+      tags: [Auth]
+      security: []
+      operationId: finishSso
+      parameters: [ { $ref: '#/components/parameters/Provider' }, { name: code, in: query, schema: { type: string } }, { name: state, in: query, schema: { type: string } } ]
+      responses: { '302': { description: Redirect to SPA }, default: { $ref: '#/components/responses/Problem' } }
+  /me:
+    get:
+      tags: [Core HR]
+      operationId: getSessionUser
+      responses: { '200': { description: Current user, content: { application/json: { schema: { $ref: '#/components/schemas/SessionUser' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /me/profile:
+    get:
+      tags: [Core HR]
+      operationId: getProfile
+      responses: { '200': { description: Profile, content: { application/json: { schema: { $ref: '#/components/schemas/Employee' } } } }, default: { $ref: '#/components/responses/Problem' } }
+    patch:
+      tags: [Core HR]
+      operationId: updateProfile
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { phone: { type: string }, address: { type: string }, emergencyName: { type: string }, emergencyPhone: { type: string } } } } } }
+      responses: { '200': { description: Updated profile, content: { application/json: { schema: { $ref: '#/components/schemas/Employee' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /me/password:
+    post:
+      tags: [Auth]
+      operationId: changePassword
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string }, newPassword: { type: string, minLength: 12 } } } } } }
+      responses: { '204': { description: Changed and sessions revoked }, default: { $ref: '#/components/responses/Problem' } }
+  /organization:
+    get:
+      tags: [Core HR]
+      operationId: getOrganization
+      responses: { '200': { description: Organization, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } } }
+    patch:
+      tags: [Core HR]
+      operationId: updateOrganization
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } } }
+      responses: { '200': { description: Updated organization, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /departments:
+    get:
+      tags: [Core HR]
+      operationId: listDepartments
+      responses: { '200': { $ref: '#/components/responses/List' } }
+    post:
+      tags: [Core HR]
+      operationId: createDepartment
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, parentDepartmentId: { type: string, format: uuid }, headEmployeeId: { type: string, format: uuid } } } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Department' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /departments/{id}:
+    delete:
+      tags: [Core HR]
+      operationId: deleteDepartment
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '204': { description: Deleted }, default: { $ref: '#/components/responses/Problem' } }
+  /positions:
+    get:
+      tags: [Core HR]
+      operationId: listPositions
+      responses: { '200': { $ref: '#/components/responses/List' } }
+    post:
+      tags: [Core HR]
+      operationId: createPosition
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [departmentId, title], properties: { departmentId: { type: string, format: uuid }, title: { type: string }, level: { type: string } } } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Position' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /employees:
+    get:
+      tags: [Core HR]
+      operationId: listEmployees
+      parameters: [ { $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }, { name: search, in: query, schema: { type: string } }, { name: departmentId, in: query, schema: { type: string, format: uuid } }, { name: status, in: query, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/List' }, default: { $ref: '#/components/responses/Problem' } }
+    post:
+      tags: [Core HR]
+      operationId: createEmployee
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Employee' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /employees/export:
+    get:
+      tags: [Core HR]
+      operationId: exportEmployees
+      parameters: [ { name: search, in: query, schema: { type: string } }, { name: departmentId, in: query, schema: { type: string, format: uuid } }, { name: status, in: query, schema: { type: string } } ]
+      responses: { '200': { description: CSV export, content: { text/csv: { schema: { type: string } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /employees/import:
+    post:
+      tags: [Core HR]
+      operationId: importEmployees
+      parameters: [ { name: dryRun, in: query, schema: { type: boolean, default: false } } ]
+      requestBody: { required: true, description: 'CSV roster. Accepts the exact columns written by /employees/export.', content: { text/csv: { schema: { type: string } } } }
+      responses: { '200': { description: 'Validation report; nothing written because dryRun was true', content: { application/json: { schema: { $ref: '#/components/schemas/ImportReport' } } } }, '201': { description: Imported, content: { application/json: { schema: { $ref: '#/components/schemas/ImportReport' } } } }, '400': { $ref: '#/components/responses/Problem' }, '422': { description: 'Rows rejected; nothing was written', content: { application/json: { schema: { $ref: '#/components/schemas/ImportReport' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /employees/{id}:
+    parameters: [ { $ref: '#/components/parameters/Id' } ]
+    get:
+      tags: [Core HR]
+      operationId: getEmployee
+      responses: { '200': { description: Employee, content: { application/json: { schema: { $ref: '#/components/schemas/Employee' } } } }, default: { $ref: '#/components/responses/Problem' } }
+    patch:
+      tags: [Core HR]
+      operationId: updateEmployee
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeInput' } } } }
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Employee' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /org-chart:
+    get: { tags: [Core HR], operationId: getOrgChart, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /dashboard/summary:
+    get: { tags: [Core HR], operationId: getDashboardSummary, responses: { '200': { description: Dashboard aggregate, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /dashboard/attention/{key}/dismiss:
+    post: { tags: [Core HR], operationId: dismissAttention, parameters: [ { name: key, in: path, required: true, schema: { type: string } } ], responses: { '204': { description: Dismissed } } }
+  /analytics/workforce:
+    get: { tags: [Core HR], operationId: workforceAnalytics, responses: { '200': { description: Workforce analytics, content: { application/json: { schema: { type: object, additionalProperties: true } } } } } }
+  /search:
+    get: { tags: [Core HR], operationId: globalSearch, parameters: [ { name: q, in: query, required: true, schema: { type: string, minLength: 2 } } ], responses: { '200': { $ref: '#/components/responses/List' } } }
+  /attendance:
+    get: { tags: [Operations], operationId: listAttendance, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post:
+      tags: [Operations]
+      operationId: createManualAttendance
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Attendance' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /attendance/export:
+    get:
+      tags: [Operations]
+      operationId: exportAttendance
+      parameters: [ { name: date, in: query, schema: { type: string, format: date } }, { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { name: departmentId, in: query, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: CSV export, content: { text/csv: { schema: { type: string } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /attendance/{id}:
+    patch: { tags: [Operations], operationId: updateAttendance, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clockIn, clockOut], properties: { clockIn: { type: string }, clockOut: { type: string }, notes: { type: string } } } } } }, responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Attendance' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /attendance/clock-in:
+    post: { tags: [Operations], operationId: clockIn, responses: { '201': { description: Clocked in, content: { application/json: { schema: { $ref: '#/components/schemas/Attendance' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /attendance/clock-out:
+    post: { tags: [Operations], operationId: clockOut, responses: { '200': { description: Clocked out, content: { application/json: { schema: { $ref: '#/components/schemas/Attendance' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /shift-assignments:
+    get: { tags: [Operations], operationId: listShiftAssignments, responses: { '200': { $ref: '#/components/responses/List' } } }
+    put:
+      tags: [Operations]
+      operationId: assignShift
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftAssignmentInput' } } } }
+      responses: { '200': { description: Assigned, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftAssignment' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /leave-types:
+    get: { tags: [Operations], operationId: listLeaveTypes, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /leave-balances:
+    get: { tags: [Operations], operationId: listLeaveBalances, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /leave-requests:
+    get: { tags: [Operations], operationId: listLeaveRequests, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post:
+      tags: [Operations]
+      operationId: createLeaveRequest
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequestInput' } } } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }, default: { $ref: '#/components/responses/Problem' } }
+  /leave-requests/{id}/approve:
+    post: { tags: [Operations], operationId: approveLeave, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { $ref: '#/components/requestBodies/DecisionNote' }, responses: { '200': { description: Approved, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /leave-requests/{id}/reject:
+    post: { tags: [Operations], operationId: rejectLeave, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { $ref: '#/components/requestBodies/DecisionNote' }, responses: { '200': { description: Rejected, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /payroll-policies:
+    get: { tags: [Operations], operationId: listPayrollPolicies, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /payroll-runs:
+    get: { tags: [Operations], operationId: listPayrollRuns, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Operations], operationId: createPayrollRun, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [policyId, periodStart, periodEnd], properties: { policyId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date } } } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /payroll-runs/{id}:
+    get: { tags: [Operations], operationId: getPayrollRun, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '200': { description: Payroll run, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /payroll-runs/{id}/execute:
+    post: { tags: [Operations], operationId: executePayrollRun, parameters: [ { $ref: '#/components/parameters/Id' }, { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 128 } } ], responses: { '202': { description: Queued, content: { application/json: { schema: { type: object, properties: { payrollRunId: { type: string, format: uuid }, status: { type: string }, idempotentReplay: { type: boolean } } } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /payslips:
+    get: { tags: [Operations], operationId: listPayslips, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /payslips/export:
+    get:
+      tags: [Operations]
+      operationId: exportPayslips
+      parameters: [ { name: employeeId, in: query, schema: { type: string, format: uuid } }, { name: payrollRunId, in: query, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: CSV export, content: { text/csv: { schema: { type: string } } } }, '403': { $ref: '#/components/responses/Problem' }, default: { $ref: '#/components/responses/Problem' } }
+  /job-postings:
+    get: { tags: [Talent], operationId: listJobPostings, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Talent], operationId: createJobPosting, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JobPostingInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/JobPosting' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /job-postings/{id}:
+    patch: { tags: [Talent], operationId: updateJobPosting, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JobPostingInput' } } } }, responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/JobPosting' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /candidates:
+    get: { tags: [Talent], operationId: listCandidates, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Talent], operationId: createCandidate, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CandidateInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Candidate' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /candidates/{id}/stage:
+    patch: { tags: [Talent], operationId: moveCandidate, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [stage], properties: { stage: { type: string, enum: [inbox, screening, interview, offer, hired, rejected] } } } } } }, responses: { '200': { description: Moved, content: { application/json: { schema: { $ref: '#/components/schemas/Candidate' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /performance-cycles:
+    get: { tags: [Talent], operationId: listPerformanceCycles, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Talent], operationId: createPerformanceCycle, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceCycle' } } } }, responses: { '201': { description: Created }, default: { $ref: '#/components/responses/Problem' } } }
+  /goals:
+    get: { tags: [Talent], operationId: listGoals, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Talent], operationId: createGoal, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GoalInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Goal' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /goals/{id}:
+    patch: { tags: [Talent], operationId: updateGoal, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GoalInput' } } } }, responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Goal' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /reviews:
+    get: { tags: [Talent], operationId: listReviews, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Talent], operationId: createReview, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Review' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /roles:
+    get: { tags: [Core HR], operationId: listRoles, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /permissions:
+    get: { tags: [Core HR], operationId: listPermissions, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /roles/{id}/permissions:
+    put: { tags: [Core HR], operationId: updateRolePermissions, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [permissionKeys], properties: { permissionKeys: { type: array, items: { type: string } } } } } } }, responses: { '200': { description: Updated }, default: { $ref: '#/components/responses/Problem' } } }
+  /audit-logs:
+    get: { tags: [Core HR], operationId: listAuditLogs, parameters: [ { $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }, { name: entityType, in: query, schema: { type: string } }, { name: action, in: query, schema: { type: string } } ], responses: { '200': { $ref: '#/components/responses/List' }, default: { $ref: '#/components/responses/Problem' } } }
+  /integrations:
+    get: { tags: [Core HR], operationId: listIntegrations, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /integrations/{provider}:
+    patch: { tags: [Core HR], operationId: updateIntegration, parameters: [ { $ref: '#/components/parameters/Provider' } ], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, config: { type: object, additionalProperties: true } } } } } }, responses: { '200': { description: Updated }, default: { $ref: '#/components/responses/Problem' } } }
+  /notifications:
+    get: { tags: [Collaboration], operationId: listNotifications, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /notifications/{id}/read:
+    post: { tags: [Collaboration], operationId: readNotification, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: Read } } }
+  /notifications/{id}:
+    delete: { tags: [Collaboration], operationId: dismissNotification, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: Dismissed } } }
+  /conversations:
+    get: { tags: [Collaboration], operationId: listConversations, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Collaboration], operationId: createConversation, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [userIds], properties: { title: { type: string }, userIds: { type: array, minItems: 1, items: { type: string, format: uuid } } } } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Conversation' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /conversations/{id}/messages:
+    get: { tags: [Collaboration], operationId: listMessages, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Collaboration], operationId: createMessage, parameters: [ { $ref: '#/components/parameters/Id' } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string, maxLength: 4000 } } } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /realtime/tickets:
+    post: { tags: [Collaboration], operationId: createRealtimeTicket, responses: { '200': { description: Realtime unavailable, content: { application/json: { schema: { type: object, properties: { realtime: { type: boolean }, ticket: { type: string }, expiresIn: { type: integer } } } } } }, '201': { description: Ticket, content: { application/json: { schema: { type: object, properties: { realtime: { type: boolean }, ticket: { type: string }, expiresIn: { type: integer } } } } } }, default: { $ref: '#/components/responses/Problem' } } }
+  /faqs:
+    get: { tags: [Collaboration], operationId: listFaqs, responses: { '200': { $ref: '#/components/responses/List' } } }
+  /support-tickets:
+    get: { tags: [Collaboration], operationId: listSupportTickets, responses: { '200': { $ref: '#/components/responses/List' } } }
+    post: { tags: [Collaboration], operationId: createSupportTicket, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SupportTicketInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SupportTicket' } } } }, default: { $ref: '#/components/responses/Problem' } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Provider: { name: provider, in: path, required: true, schema: { type: string, enum: [google, entra, slack] } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+  requestBodies:
+    MFAChallengeToken: { required: true, content: { application/json: { schema: { type: object, required: [challengeToken], properties: { challengeToken: { type: string } } } } } }
+    MFACode: { required: true, content: { application/json: { schema: { type: object, required: [challengeToken, code], properties: { challengeToken: { type: string }, code: { type: string } } } } } }
+    DecisionNote: { content: { application/json: { schema: { type: object, properties: { note: { type: string, maxLength: 1000 } } } } } }
+  responses:
+    Problem: { description: Problem details, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+    List: { description: Paginated or bounded list, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object, additionalProperties: true } }, meta: { $ref: '#/components/schemas/ListMeta' } } } } } }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, detail]
+      properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, code: { type: string }, detail: { type: string }, errors: { type: object, additionalProperties: { type: string } }, requestId: { type: string } }
+    ListMeta: { type: object, properties: { page: { type: integer }, pageSize: { type: integer }, total: { type: integer, format: int64 } } }
+    LoginRequest: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string, minLength: 8 }, organizationSlug: { type: string } } }
+    MFAChallenge: { type: object, properties: { mfaRequired: { type: boolean }, mfaEnrollmentRequired: { type: boolean }, challengeToken: { type: string } } }
+    SessionResponse: { type: object, properties: { accessToken: { type: string }, expiresIn: { type: integer }, user: { $ref: '#/components/schemas/SessionUser' }, recoveryCodes: { type: array, items: { type: string } }, organizationSelectionRequired: { type: boolean }, organizations: { type: array, items: { $ref: '#/components/schemas/WorkspaceOption' } } } }
+    WorkspaceOption: { type: object, required: [slug, name], properties: { slug: { type: string }, name: { type: string } } }
+    SessionUser: { type: object, properties: { id: { type: string, format: uuid }, email: { type: string, format: email }, role: { type: string }, employeeId: { type: string, format: uuid }, permissions: { type: array, items: { type: string } }, organization: { $ref: '#/components/schemas/Organization' }, mfaEnabled: { type: boolean } } }
+    Organization: { allOf: [ { $ref: '#/components/schemas/OrganizationInput' }, { type: object, properties: { id: { type: string, format: uuid }, slug: { type: string }, createdAt: { type: string, format: date-time }, updatedAt: { type: string, format: date-time } } } ] }
+    OrganizationInput: { type: object, properties: { name: { type: string }, industry: { type: string }, address: { type: string }, phone: { type: string }, email: { type: string, format: email }, timezone: { type: string }, locale: { type: string }, currency: { type: string } } }
+    Department: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string }, parentDepartmentId: { type: string, format: uuid }, headEmployeeId: { type: string, format: uuid }, employeeCount: { type: integer } } }
+    Position: { type: object, properties: { id: { type: string, format: uuid }, departmentId: { type: string, format: uuid }, title: { type: string }, level: { type: string }, department: { $ref: '#/components/schemas/Department' } } }
+    Compensation: { type: object, properties: { baseSalary: { type: integer, format: int64 }, taxStatus: { type: string }, bpjsHealthEnabled: { type: boolean }, bpjsEmploymentEnabled: { type: boolean }, bankName: { type: string }, effectiveFrom: { type: string, format: date } } }
+    Employee: { type: object, properties: { id: { type: string, format: uuid }, employeeCode: { type: string }, fullName: { type: string }, email: { type: string, format: email }, phone: { type: string }, hireDate: { type: string, format: date }, status: { type: string, enum: [active, on_leave, inactive, terminated] }, departmentId: { type: string, format: uuid }, positionId: { type: string, format: uuid }, managerId: { type: string, format: uuid }, address: { type: string }, education: { type: string }, gender: { type: string }, department: { $ref: '#/components/schemas/Department' }, position: { $ref: '#/components/schemas/Position' }, manager: { type: object, additionalProperties: true }, compensation: { $ref: '#/components/schemas/Compensation' } } }
+    EmployeeInput: { type: object, required: [fullName, email, hireDate, status, departmentId, positionId], properties: { employeeCode: { type: string }, fullName: { type: string }, email: { type: string, format: email }, phone: { type: string }, hireDate: { type: string, format: date }, status: { type: string }, departmentId: { type: string, format: uuid }, positionId: { type: string, format: uuid }, managerId: { type: string, format: uuid }, address: { type: string }, education: { type: string }, gender: { type: string }, nik: { type: string }, baseSalary: { type: integer, format: int64 }, taxStatus: { type: string }, bankName: { type: string }, bankAccount: { type: string } } }
+    ImportRowError: { type: object, required: [line, message], properties: { line: { type: integer, description: 'Spreadsheet line the problem is on' }, column: { type: string }, message: { type: string } } }
+    ImportReport: { type: object, properties: { dryRun: { type: boolean }, valid: { type: integer, description: 'Rows that passed validation' }, created: { type: integer, description: 'Rows actually written; always 0 when errors are present' }, errors: { type: array, items: { $ref: '#/components/schemas/ImportRowError' } } } }
+    Attendance: { type: object, properties: { id: { type: string, format: uuid }, employeeId: { type: string, format: uuid }, date: { type: string, format: date }, clockIn: { type: string, format: date-time }, clockOut: { type: string, format: date-time }, totalMinutes: { type: integer }, overtimeMinutes: { type: integer }, status: { type: string }, source: { type: string }, employee: { $ref: '#/components/schemas/Employee' } } }
+    AttendanceInput: { type: object, required: [employeeId, date, clockIn, clockOut], properties: { employeeId: { type: string, format: uuid }, date: { type: string, format: date }, clockIn: { type: string, example: '09:00' }, clockOut: { type: string, example: '17:00' }, notes: { type: string } } }
+    ShiftAssignment: { type: object, properties: { id: { type: string, format: uuid }, employeeId: { type: string, format: uuid }, date: { type: string, format: date }, shiftType: { type: string }, startTime: { type: string }, endTime: { type: string }, employee: { $ref: '#/components/schemas/Employee' } } }
+    ShiftAssignmentInput: { type: object, required: [employeeId, date, shiftType], properties: { employeeId: { type: string, format: uuid }, date: { type: string, format: date }, shiftType: { type: string, enum: [morning, afternoon, night, off] }, startTime: { type: string }, endTime: { type: string } } }
+    LeaveRequest: { type: object, properties: { id: { type: string, format: uuid }, employeeId: { type: string, format: uuid }, leaveTypeId: { type: string, format: uuid }, startDate: { type: string, format: date }, endDate: { type: string, format: date }, durationDays: { type: integer }, reason: { type: string }, status: { type: string }, employee: { $ref: '#/components/schemas/Employee' }, leaveType: { type: object, additionalProperties: true } } }
+    LeaveRequestInput: { type: object, required: [leaveTypeId, startDate, endDate, reason], properties: { leaveTypeId: { type: string, format: uuid }, startDate: { type: string, format: date }, endDate: { type: string, format: date }, reason: { type: string } } }
+    PayrollRun: { type: object, properties: { id: { type: string, format: uuid }, policyId: { type: string, format: uuid }, periodStart: { type: string, format: date }, periodEnd: { type: string, format: date }, status: { type: string, enum: [draft, queued, processing, completed, failed] }, totalGross: { type: integer, format: int64 }, totalDeductions: { type: integer, format: int64 }, totalNet: { type: integer, format: int64 }, processedAt: { type: string, format: date-time }, payslips: { type: array, items: { type: object, additionalProperties: true } } } }
+    JobPosting: { allOf: [ { $ref: '#/components/schemas/JobPostingInput' }, { type: object, properties: { id: { type: string, format: uuid }, department: { $ref: '#/components/schemas/Department' } } } ] }
+    JobPostingInput: { type: object, required: [departmentId, title, status], properties: { departmentId: { type: string, format: uuid }, title: { type: string }, status: { type: string, enum: [draft, open, closed] }, description: { type: string } } }
+    Candidate: { allOf: [ { $ref: '#/components/schemas/CandidateInput' }, { type: object, properties: { id: { type: string, format: uuid }, stage: { type: string }, jobPosting: { $ref: '#/components/schemas/JobPosting' } } } ] }
+    CandidateInput: { type: object, required: [jobPostingId, fullName, email], properties: { jobPostingId: { type: string, format: uuid }, fullName: { type: string }, email: { type: string, format: email }, source: { type: string }, rating: { type: integer, minimum: 0, maximum: 5 } } }
+    PerformanceCycle: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string }, startDate: { type: string, format: date }, endDate: { type: string, format: date }, status: { type: string, enum: [draft, active, closed] } } }
+    Goal: { allOf: [ { $ref: '#/components/schemas/GoalInput' }, { type: object, properties: { id: { type: string, format: uuid } } } ] }
+    GoalInput: { type: object, properties: { employeeId: { type: string, format: uuid }, cycleId: { type: string, format: uuid }, title: { type: string }, category: { type: string }, progress: { type: integer, minimum: 0, maximum: 100 }, weight: { type: integer, minimum: 0, maximum: 100 } } }
+    Review: { allOf: [ { $ref: '#/components/schemas/ReviewInput' }, { type: object, properties: { id: { type: string, format: uuid }, reviewer: { $ref: '#/components/schemas/Employee' }, createdAt: { type: string, format: date-time } } } ] }
+    ReviewInput: { type: object, required: [cycleId, employeeId, rating, notes], properties: { cycleId: { type: string, format: uuid }, employeeId: { type: string, format: uuid }, rating: { type: integer, minimum: 1, maximum: 5 }, relation: { type: string }, notes: { type: string } } }
+    Conversation: { type: object, properties: { id: { type: string, format: uuid }, title: { type: string }, updatedAt: { type: string, format: date-time } } }
+    Message: { type: object, properties: { id: { type: string, format: uuid }, conversationId: { type: string, format: uuid }, senderUserId: { type: string, format: uuid }, body: { type: string }, createdAt: { type: string, format: date-time } } }
+    SupportTicket: { allOf: [ { $ref: '#/components/schemas/SupportTicketInput' }, { type: object, properties: { id: { type: string, format: uuid }, status: { type: string }, createdAt: { type: string, format: date-time } } } ] }
+    SupportTicketInput: { type: object, required: [subject, category, message], properties: { subject: { type: string }, category: { type: string }, message: { type: string } } }

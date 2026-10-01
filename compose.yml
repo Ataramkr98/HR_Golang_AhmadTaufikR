@@ -1,0 +1,98 @@
+name: simpul-hr
+
+x-backend-environment: &backend-environment
+  APP_ENV: development
+  HTTP_ADDR: :8080
+  PUBLIC_API_URL: http://localhost:8080
+  FRONTEND_URL: http://localhost:5173
+  DATABASE_URL: postgres://simpul:${POSTGRES_PASSWORD:-simpul_local_only}@postgres:5432/simpul?sslmode=disable
+  REDIS_ADDR: redis:6379
+  ALLOWED_ORIGINS: http://localhost:5173
+  ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-local-compose-access-token-secret-change-me}
+  FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=}
+  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-ChangeMe-OnlyForLocalDevelopment-123!}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: simpul
+      POSTGRES_USER: simpul
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simpul_local_only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simpul -d simpul"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["/app/migrate", "up"]
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment: *backend-environment
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["/app/worker"]
+    environment: *backend-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  seed:
+    build: .
+    command: ["/app/seed"]
+    environment: *backend-environment
+    profiles: ["demo"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ../hr-management
+      args:
+        VITE_API_BASE_URL: http://localhost:8080/v1
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
